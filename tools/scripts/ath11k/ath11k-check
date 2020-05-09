@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # Copyright (c) 2015-2017 Qualcomm Atheros, Inc.
-# Copyright (c) 2018, The Linux Foundation. All rights reserved.
+# Copyright (c) 2018-2019, The Linux Foundation. All rights reserved.
 #
 # Permission to use, copy, modify, and/or distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
@@ -15,7 +15,7 @@
 # ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 # OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 #
-# Run 'ath10k-check --help' to see the instructions
+# Run 'ath11k-check --help' to see the instructions
 #
 
 import subprocess
@@ -35,11 +35,11 @@ CHECKPATCH_COMMIT = '852d095d16a6298834839f441593f59d58a31978'
 
 GIT_URL = 'https://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/plain/scripts/checkpatch.pl?id=%s'
 
-DRIVER_DIR = 'drivers/net/wireless/ath/ath10k/'
+DRIVER_DIR = 'drivers/net/wireless/ath/ath11k/'
 
 FILTER_REGEXP = r'/ath'
 
-IGNORE_FILES = ['trace.h']
+IGNORE_FILES = []
 
 CHECKPATCH_IGNORE = ['MSLEEP',
                      'USLEEP_RANGE',
@@ -75,25 +75,27 @@ CHECKPATCH_IGNORE = ['MSLEEP',
                      'MACRO_ARG_PRECEDENCE',
 
                      'BOOL_MEMBER',
+
+                     # TODO: ath11k uses volatile for now, fix it
+                     'VOLATILE',
+
+                     # TODO: document all DT usage in ath11k
+                     'UNDOCUMENTED_DT_STRING',
                      ]
 
 CHECKPATCH_OPTS = ['--strict', '-q', '--terse', '--no-summary',
                    '--max-line-length=90', '--show-types']
 
 checkpatch_filter = [
-    ('ath10k_read_simulate_fw_crash', 'LONG_LINE'),
-    ('wmi_ops', 'LONG_LINE'),
-    ('wmi_tlv_policy', 'SPACING'),
-    ('ath10k_core_register_work', 'RETURN_VOID'),
-    ('ATH10K_HW_RATE_CCK_.*', 'LONG_LINE'),
-
-    # checkpatch doesn't like uninitialized_var()
-    ('ath10k_init_hw_params', 'FUNCTION_ARGUMENTS'),
+    ('ath11k_read_simulate_fw_crash', 'LONG_LINE'),
+    ('qmi_wlanfw_respond_mem_req_msg_v01', 'LONG_LINE'),
 ]
+
+sparse_filter = [r'warning: dubious: x & !y']
 
 # global variables
 
-logger = logging.getLogger('ath10k-check')
+logger = logging.getLogger('ath11k-check')
 
 threads = 1
 
@@ -170,7 +172,17 @@ def run_sparse(args):
                 logger.debug('FILTERED: %s' % line)
                 continue
 
-            print line.strip()
+            drop = False
+
+            for f in sparse_filter:
+                match = re.search(f, line)
+                if not args.no_filter and match:
+                    logger.debug('sparse_filter: %s' % line)
+                    drop = True
+                    break
+
+            if not drop:
+                print line.strip()
 
     return p.returncode
 
@@ -336,7 +348,7 @@ def show_version(args):
     run = subprocess.check_output
 
     f = open(sys.argv[0], 'r')
-    ath10kcheck_md5sum = hashlib.md5(f.read()).hexdigest()
+    ath11kcheck_md5sum = hashlib.md5(f.read()).hexdigest()
     f.close()
 
     try:
@@ -365,7 +377,7 @@ def show_version(args):
     except:
         pass
 
-    print 'ath10k-check (md5sum %s)' % (ath10kcheck_md5sum)
+    print 'ath11k-check (md5sum %s)' % (ath11kcheck_md5sum)
     print
     print 'gcc:\t\t%s' % (gcc_version)
     print 'sparse:\t\t%s' % (sparse_version)
@@ -380,14 +392,14 @@ def main():
 
     checkpatch_url = GIT_URL % (CHECKPATCH_COMMIT)
 
-    description = '''ath10k source code checker
+    description = '''ath11k source code checker
 
 Runs various tests (gcc, sparse and checkpatch) with filtering
 unnecessary warnings away, the goal is to have empty output from the
 script.
 
 Run this from the main kernel source directory which is preconfigured
-with ath10k enabled. gcc recompilation is forced every time,
+with ath11k enabled. gcc recompilation is forced every time,
 irrespective if there are any changes in source or not. So this can be
 run multiple times and every time the same warnings will appear.
 
@@ -409,7 +421,7 @@ install it somewhere in your $$PATH:
 $CHECKPATCH_URL
 
 Alternatively if you want manually run checkpatch with the same
-settings as ath10k-check uses here's the command line:
+settings as ath11k-check uses here's the command line:
 
 $CHECKPATCH_CMDLINE
 '''
