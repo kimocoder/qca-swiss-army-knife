@@ -387,8 +387,7 @@ def ath10k_htt_rx_desc_handler(pevent, trace_seq, event):
         output_write(rxdesc[76: 208])
         output_write(rxdesc[228:])
 
-    elif hw_type in [ATH10K_PKTLOG_HW_QCA99X0, ATH10K_PKTLOG_HW_QCA40XX,
-                     ATH10K_PKTLOG_HW_QCA9888, ATH10K_PKTLOG_HW_QCA9984]:
+    elif hw_type in [ATH10K_PKTLOG_HW_QCA99X0, ATH10K_PKTLOG_HW_QCA40XX]:
         hdr = Ath10kPktlog_10_4_Hdr()
         hdr.flags = (1 << ATH10K_PKTLOG_FLG_TYPE_REMOTE_S)
         hdr.missed_cnt = 0
@@ -397,6 +396,25 @@ def ath10k_htt_rx_desc_handler(pevent, trace_seq, event):
         hdr.size = len(rxdesc)
         output_write(hdr.pack())
         output_write(rxdesc)
+
+    elif hw_type in [ATH10K_PKTLOG_HW_QCA9888, ATH10K_PKTLOG_HW_QCA9984]:
+        hdr = Ath10kPktlog_10_4_Hdr()
+        hdr.flags = (1 << ATH10K_PKTLOG_FLG_TYPE_REMOTE_S)
+        hdr.missed_cnt = 0
+        hdr.log_type = ATH10K_PKTLOG_TYPE_RX_STAT
+        hdr.type_specific_data = 0
+        # rx_desc size for QCA9984 and QCA9889 chipsets is 296
+        hdr.size = 296
+        output_write(hdr.pack())
+        output_write(rxdesc[0: 4])
+        output_write(rxdesc[4: 8])
+        output_write(rxdesc[12: 24])
+        output_write(rxdesc[24: 40])
+        output_write(rxdesc[44: 84])
+        output_write(rxdesc[100: 104])
+        output_write(rxdesc[104: 144])
+        output_write(rxdesc[144: 256])
+        output_write(rxdesc[292:])
 
 
 def ath10k_htt_tx_handler(pevent, trace_seq, event):

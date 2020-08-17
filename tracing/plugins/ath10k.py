@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2012-2014,2016 Qualcomm Atheros, Inc.
+# Copyright (c) 2012-2014,2016,2019 Qualcomm Atheros, Inc.
 #
 # Permission to use, copy, modify, and/or distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
@@ -358,10 +358,10 @@ def parse_htt_stats_rx_rate_info(pevent, trace_seq, buf, tlv_length):
 
         trace_seq.puts("%d " % (pream_count))
 
-    msg_base_len = 28
+    msg_base_len = 36
 
     l = msg_base_len
-    hdr = struct.unpack("<IIIIIII", buf[0:l])
+    hdr = struct.unpack("<IIIIIIBBBBII", buf[0:l])
     buf = buf[l:]
 
     ldpc_count = hdr[0]
@@ -370,10 +370,14 @@ def parse_htt_stats_rx_rate_info(pevent, trace_seq, buf, tlv_length):
     rssi_chain1 = hdr[3]
     rssi_chain2 = hdr[4]
     rssi_chain3 = hdr[5]
-    rssis = hdr[6]
+    mgmt_rssi = hdr[6]
+    data_rssi = hdr[7]
+    rssi_comb_ht = hdr[8]
+    reserved = hdr[9]
+    nf_dbm = hdr[10]
+    rssi_dbm = hdr[11]
 
-    trace_seq.puts("\n\t\t ldpc_count %d txbf_count %d rssi_chain0 0x%02x 0x%02x 0x%02x 0x%02x rssi_chain1 0x%02x 0x%02x 0x%02x 0x%02x rssi_chain2 0x%02x 0x%02x 0x%02x 0x%02x rssi_chain3 0x%02x 0x%02x 0x%02x 0x%02x mgmt_rssi %d data_rssi %d rssi_comb_ht %d" % (ldpc_count, txbf_count, (rssi_chain0 >> 24) & 0xff, (rssi_chain0 >> 16) & 0xff, (rssi_chain0 >> 8) & 0xff, (rssi_chain0 >> 0) & 0xff, (
-        rssi_chain1 >> 24) & 0xff, (rssi_chain1 >> 16) & 0xff, (rssi_chain1 >> 8) & 0xff, (rssi_chain1 >> 0) & 0xff, (rssi_chain2 >> 24) & 0xff, (rssi_chain2 >> 16) & 0xff, (rssi_chain2 >> 8) & 0xff, (rssi_chain2 >> 0) & 0xff, (rssi_chain3 >> 24) & 0xff, (rssi_chain3 >> 16) & 0xff, (rssi_chain3 >> 8) & 0xff, (rssi_chain3 >> 0) & 0xff, (rssis >> 16) & 0xff, (rssis >> 0) & 0xff, (rssis >> 8) & 0xff))
+    trace_seq.puts("\n\t\t ldpc_count %d \n\t\t txbf_count %d \n\t\t rssi_chain0 0x%02x 0x%02x 0x%02x 0x%02x \n\t\t rssi_chain1 0x%02x 0x%02x 0x%02x 0x%02x \n\t\t rssi_chain2 0x%02x 0x%02x 0x%02x 0x%02x \n\t\t rssi_chain3 0x%02x 0x%02x 0x%02x 0x%02x \n\t\t mgmt_rssi %d \n\t\t data_rssi %d \n\t\t rssi_comb_ht %d \n\t\t nf_dbm %d \n\t\t rssi_dbm %d" % (ldpc_count, txbf_count, (rssi_chain0 >> 24) & 0xff, (rssi_chain0 >> 16) & 0xff, (rssi_chain0 >> 8) & 0xff, (rssi_chain0 >> 0) & 0xff, (rssi_chain1 >> 24) & 0xff, (rssi_chain1 >> 16) & 0xff, (rssi_chain1 >> 8) & 0xff, (rssi_chain1 >> 0) & 0xff, (rssi_chain2 >> 24) & 0xff, (rssi_chain2 >> 16) & 0xff, (rssi_chain2 >> 8) & 0xff, (rssi_chain2 >> 0) & 0xff, (rssi_chain3 >> 24) & 0xff, (rssi_chain3 >> 16) & 0xff, (rssi_chain3 >> 8) & 0xff, (rssi_chain3 >> 0) & 0xff, (rssis >> 16) & 0xff, (rssis >> 0) & 0xff, (rssis >> 8) & 0xff, mgmt_rssi, data_rssi, rssi_comb_ht, nf_dbm, rssi_dbm))
 
 
 def parse_htt_stats_tx_ppdu_log(pevent, trace_seq, buf, tlv_length):
@@ -478,7 +482,7 @@ def parse_htt_stats_tx_rate_info(pevent, trace_seq, buf, tlv_length):
 
     trace_seq.puts("\n\t\t BW_counts ")
 
-    for i in range(3):
+    for i in range(4):
         l = msg_base_len
         hdr = struct.unpack("<I", buf[0:l])
         buf = buf[l:]
@@ -508,8 +512,31 @@ def parse_htt_stats_tx_rate_info(pevent, trace_seq, buf, tlv_length):
     rts_count = hdr[1]
     ack_rssi = hdr[2]
 
-    trace_seq.puts("\n\t\t ldpc_count : %d rts_count : %d ack_rssi : %d" %
+    trace_seq.puts("\n\t\t ldpc_count : %d \n\t\t rts_count : %d \n\t\t ack_rssi : %d" %
                    (ldpc_count, rts_count, ack_rssi))
+
+    trace_seq.puts("\n\t\t MU MCS counts (0..9): ")
+
+    msg_base_len = 4
+
+    for i in range(10):
+        l = msg_base_len
+        hdr=struct.unpack("<I", buf[0:l])
+        buf = buf[l:]
+
+        mu_mcs = hdr[0]
+        trace_seq.puts("%d " % (mu_mcs))
+
+    trace_seq.puts("\n\t\t Mu_NSS ")
+
+    for i in range(2):
+        l = msg_base_len
+        hdr = struct.unpack("<I", buf[0:l])
+        buf = buf[l:]
+
+        mu_nss = hdr[0]
+
+        trace_seq.puts("%d " % (mu_nss))
 
 
 def parse_htt_stats_tidq(pevent, trace_seq, buf, tlv_length):
@@ -958,6 +985,62 @@ def parse_htt_stats_tx_pf_sched(pevent, trace_seq, buf, tlv_length):
         trace_seq.puts("\n\t\t AC[%d]\ntx_queued:%d tx_reaped:%d tx_sched:%d abort_sched:%d sched_timeout:%d tx_sched_waitq:%d fetch_resp:%d fetch_resp_invld:%d fetch_resp_delayed:%d fetch_request:%d tx_requeued:%d sched_fail:%d" %
                        (i, tx_queued, tx_reaped, tx_sched, abort_sched, sched_timeout, tx_sched_waitq, fetch_resp, fetch_resp_invld, fetch_resp_delayed, fetch_request, tx_requeued, sched_fail))
 
+def parse_one_htt_stats_conf_msg(pevent, trace_seq, buf, tlv, cookie):
+    # enum htt_dbg_stats_type: HTT_DBG_STATS_*
+    tlv_type = (tlv >> 0) & 0x1f
+
+    # enum htt_dbg_stats_status: HTT_DBG_STATS_STATUS_*
+    tlv_status = (tlv & 0xe0) >> 5
+
+    tlv_length = (tlv & 0xffff0000) >> 16
+
+    if tlv_length > len(buf):
+        return False
+
+    if tlv_status == HTT_DBG_STATS_STATUS_SERIES_DONE:
+        return False
+
+    if tlv_status != HTT_DBG_STATS_STATUS_PRESENT and \
+        tlv_status != HTT_DBG_STATS_STATUS_PARTIAL:
+	return True
+
+    trace_seq.puts("\t\tcookie 0x%016x tlv_type %d tlv_status %d tlv_length %d\n"
+                   % (cookie, tlv_type, tlv_status, tlv_length))
+
+    if tlv_type == HTT_DBG_STATS_WAL_PDEV_TXRX:
+        parse_htt_stats_wal_pdev_txrx(pevent, trace_seq, buf, tlv_length)
+    elif tlv_type == HTT_DBG_STATS_RX_REORDER:
+        parse_htt_stats_rx_reorder(pevent, trace_seq, buf, tlv_length)
+    elif tlv_type == HTT_DBG_STATS_RX_RATE_INFO:
+        parse_htt_stats_rx_rate_info(pevent, trace_seq, buf, tlv_length)
+    elif tlv_type == HTT_DBG_STATS_TX_PPDU_LOG:
+        parse_htt_stats_tx_ppdu_log(pevent, trace_seq, buf, tlv_length)
+    elif tlv_type == HTT_DBG_STATS_TX_RATE_INFO:
+        parse_htt_stats_tx_rate_info(pevent, trace_seq, buf, tlv_length)
+    elif tlv_type == HTT_DBG_STATS_TIDQ:
+        parse_htt_stats_tidq(pevent, trace_seq, buf, tlv_length)
+    elif tlv_type == HTT_DBG_STATS_TXBF_INFO:
+        parse_htt_stats_txbf_data_info(pevent, trace_seq, buf, tlv_length)
+    elif tlv_type == HTT_DBG_STATS_SND_INFO:
+        parse_htt_stats_txbf_send_info(pevent, trace_seq, buf, tlv_length)
+    elif tlv_type == HTT_DBG_STATS_TX_SELFGEN_INFO:
+        parse_htt_stats_tx_selfgen(pevent, trace_seq, buf, tlv_length)
+    elif tlv_type == HTT_DBG_STATS_TX_MU_INFO:
+        parse_htt_stats_tx_mu(pevent, trace_seq, buf, tlv_length)
+    elif tlv_type == HTT_DBG_STATS_SIFS_RESP_INFO:
+        parse_htt_stats_sifs_resp(pevent, trace_seq, buf, tlv_length)
+    elif tlv_type == HTT_DBG_STATS_RESET_INFO:
+        parse_htt_stats_reset(pevent, trace_seq, buf, tlv_length)
+    elif tlv_type == HTT_DBG_STATS_MAC_WDOG_INFO:
+        parse_htt_stats_mac_wdog(pevent, trace_seq, buf, tlv_length)
+    elif tlv_type == HTT_DBG_STATS_TX_DESC_INFO:
+        parse_htt_stats_tx_desc(pevent, trace_seq, buf, tlv_length)
+    elif tlv_type == HTT_DBG_STATS_TX_FETCH_MGR_INFO:
+        parse_htt_stats_tx_fetch_mgr(pevent, trace_seq, buf, tlv_length)
+    elif tlv_type == HTT_DBG_STATS_TX_PFSCHED_INFO:
+        parse_htt_stats_tx_pf_sched(pevent, trace_seq, buf, tlv_length)
+
+    return True
 
 def parse_htt_stats_conf_msg(pevent, trace_seq, buf):
     # parse HTT_T2H_STATS_CONF_TLV
@@ -970,50 +1053,26 @@ def parse_htt_stats_conf_msg(pevent, trace_seq, buf):
 
     tlv = hdr[2]
 
-    # enum htt_dbg_stats_type: HTT_DBG_STATS_*
-    tlv_type = (tlv >> 0) & 0x1f
-
-    # enum htt_dbg_stats_status: HTT_DBG_STATS_STATUS_*
-    tlv_status = (tlv & 0xe0) >> 5
+    if parse_one_htt_stats_conf_msg(pevent, trace_seq, buf, tlv, cookie) == False:
+        return
 
     tlv_length = (tlv & 0xffff0000) >> 16
 
-    trace_seq.puts("\t\tcookie 0x%016x tlv_type %d tlv_status %d tlv_length %d\n"
-                   % (cookie, tlv_type, tlv_status, tlv_length))
+    while len(buf) > tlv_length+4:
+        buf = buf[tlv_length:]
+        l = 4
+        hdr = struct.unpack("<I", buf[0:l])
+	buf = buf[l:]
 
-    if tlv_type == HTT_DBG_STATS_WAL_PDEV_TXRX:
-        parse_htt_stats_wal_pdev_txrx(pevent, trace_seq, buf, tlv_length)
-    if tlv_type == HTT_DBG_STATS_RX_REORDER:
-        parse_htt_stats_rx_reorder(pevent, trace_seq, buf, tlv_length)
-    if tlv_type == HTT_DBG_STATS_RX_RATE_INFO:
-        parse_htt_stats_rx_rate_info(pevent, trace_seq, buf, tlv_length)
-    if tlv_type == HTT_DBG_STATS_TX_PPDU_LOG:
-        parse_htt_stats_tx_ppdu_log(pevent, trace_seq, buf, tlv_length)
-    if tlv_type == HTT_DBG_STATS_TX_RATE_INFO:
-        parse_htt_stats_tx_rate_info(pevent, trace_seq, buf, tlv_length)
-    if tlv_type == HTT_DBG_STATS_TIDQ:
-        parse_htt_stats_tidq(pevent, trace_seq, buf, tlv_length)
-    if tlv_type == HTT_DBG_STATS_TXBF_INFO:
-        parse_htt_stats_txbf_data_info(pevent, trace_seq, buf, tlv_length)
-    if tlv_type == HTT_DBG_STATS_SND_INFO:
-        parse_htt_stats_txbf_send_info(pevent, trace_seq, buf, tlv_length)
-    if tlv_type == HTT_DBG_STATS_TX_SELFGEN_INFO:
-        parse_htt_stats_tx_selfgen(pevent, trace_seq, buf, tlv_length)
-    if tlv_type == HTT_DBG_STATS_TX_MU_INFO:
-        parse_htt_stats_tx_mu(pevent, trace_seq, buf, tlv_length)
-    if tlv_type == HTT_DBG_STATS_SIFS_RESP_INFO:
-        parse_htt_stats_sifs_resp(pevent, trace_seq, buf, tlv_length)
-    if tlv_type == HTT_DBG_STATS_RESET_INFO:
-        parse_htt_stats_reset(pevent, trace_seq, buf, tlv_length)
-    if tlv_type == HTT_DBG_STATS_MAC_WDOG_INFO:
-        parse_htt_stats_mac_wdog(pevent, trace_seq, buf, tlv_length)
-    if tlv_type == HTT_DBG_STATS_TX_DESC_INFO:
-        parse_htt_stats_tx_desc(pevent, trace_seq, buf, tlv_length)
-    if tlv_type == HTT_DBG_STATS_TX_FETCH_MGR_INFO:
-        parse_htt_stats_tx_fetch_mgr(pevent, trace_seq, buf, tlv_length)
-    if tlv_type == HTT_DBG_STATS_TX_PFSCHED_INFO:
-        parse_htt_stats_tx_pf_sched(pevent, trace_seq, buf, tlv_length)
+        tlv = hdr[0]
 
+	tlv_length = (tlv & 0xffff0000) >> 16
+
+        if tlv_length == 0:
+	    continue
+
+        if parse_one_htt_stats_conf_msg(pevent, trace_seq, buf, tlv, cookie) == False:
+            break
 
 def ath10k_htt_stats_handler(pevent, trace_seq, event):
     buf_len = long(event['buf_len'])
