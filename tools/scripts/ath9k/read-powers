@@ -294,8 +294,8 @@ def process_ext_dup_rates():
 		dbm = "%.2f dBm" % (double_dbm / 2)
 		print "%015s %010s" % (rate, dbm)
 
-def print_power_reg (reg, val):
-	if not reg in map(lambda x: int(x, 0), registers.keys()):
+def print_power_reg(reg, val):
+	if reg not in map(lambda x: int(x, 0), registers.keys()):
 		return
 	registers.get("0x%06x" % reg)(val)
 

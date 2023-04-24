@@ -65,7 +65,7 @@ class Hardware():
         # hw3.0
         self.hw_ver = hw_ver
 
-        self.name = '%s %s' % (hw, hw_ver)
+        self.name = f'{hw} {hw_ver}'
 
         self.firmware_branches = []
         self.board_files = []
@@ -104,13 +104,11 @@ class FirmwareBranch():
             priority_path = os.path.join(path, BRANCH_PRIORITY_FILE)
             if os.path.isfile(priority_path):
                 try:
-                    f = open(priority_path, 'r')
-                    buf = f.read()
-                    f.close()
-
+                    with open(priority_path, 'r') as f:
+                        buf = f.read()
                     self.priority = int(buf)
                 except Exception as e:
-                    print('Failed to read %s: %s' % (priority_path, e))
+                    print(f'Failed to read {priority_path}: {e}')
 
 
 class BoardFile():
@@ -122,14 +120,10 @@ class BoardFile():
         match = re.search(r'^board-(\d+).bin', filename)
         if match is None:
             match = re.search(r'^board.bin', filename)
-            if match is None:
-                return None
+        if match is None:
+            return None
 
-        if len(match.groups()) > 1:
-            bd_api = match.group(1)
-        else:
-            bd_api = None
-
+        bd_api = match[1] if len(match.groups()) > 1 else None
         return BoardFile(path, bd_api)
 
     def get_installation_name(self):
@@ -139,7 +133,7 @@ class BoardFile():
         return self.__str__()
 
     def __str__(self):
-        return '%s' % (self.get_installation_name())
+        return f'{self.get_installation_name()}'
 
     def __init__(self, path, bd_api):
         self.path = path
@@ -156,16 +150,16 @@ class Firmware():
         if match is None:
             return None
 
-        fw_api = match.group(1)
-        fw_ver = match.group(2)
+        fw_api = match[1]
+        fw_ver = match[2]
 
         return Firmware(fw_ver, path, fw_api)
 
     def get_installation_name(self):
-        return 'firmware-%s.bin' % (self.fw_api)
+        return f'firmware-{self.fw_api}.bin'
 
     def get_notice_filename(self):
-        return 'notice_ath10k_firmware-%s.txt' % (self.fw_api)
+        return f'notice_ath10k_firmware-{self.fw_api}.txt'
 
     def __eq__(self, other):
         return self.fw_ver == other.fw_ver
@@ -221,10 +215,7 @@ class Firmware():
             elif s[i] > o[i]:
                 return False
 
-        if len(s) > len(o):
-            return False
-
-        return True
+        return len(s) <= len(o)
 
     def __le__(self, other):
         return self.__lt__(other) or self.__eq__(other)
@@ -239,7 +230,7 @@ class Firmware():
         return self.__str__()
 
     def __str__(self):
-        return '%s' % (self.fw_ver)
+        return f'{self.fw_ver}'
 
     # path can be None with unittests
     def __init__(self, fw_ver, path=None, fw_api=None):
@@ -249,7 +240,7 @@ class Firmware():
         self.notice_path = None
 
         if path:
-            s = 'notice.txt_%s' % (self.fw_ver)
+            s = f'notice.txt_{self.fw_ver}'
             n = os.path.join(os.path.dirname(path), s)
             if os.path.isfile(n):
                 self.notice_path = n
@@ -268,8 +259,7 @@ def scan_dir(path):
         if not os.path.isfile(f_path):
             continue
 
-        firmware = Firmware.create_from_path(f_path)
-        if firmware:
+        if firmware := Firmware.create_from_path(f_path):
             if blacklist and firmware.fw_ver in FIRMWARE_BLACKLIST:
                 logger.debug('\'%s\' blacklisted' % (firmware.fw_ver))
                 continue
@@ -277,8 +267,7 @@ def scan_dir(path):
             fw_list.append(firmware)
             continue
 
-        boardfile = BoardFile.create_from_path(f_path)
-        if boardfile:
+        if boardfile := BoardFile.create_from_path(f_path):
             bd_list.append(boardfile)
             continue
 
@@ -289,7 +278,7 @@ def scan_dir(path):
         if f == BRANCH_PRIORITY_FILE:
             continue
 
-        logger.warning('Unknown file: %s' % (f_path))
+        logger.warning(f'Unknown file: {f_path}')
 
     return fw_list, bd_list
 
@@ -306,14 +295,14 @@ def scan_hw_ver(hw):
         if not os.path.isdir(fw_branch_path):
             continue
 
-        logger.debug('Found firmware branch: %s' % (fw_branch))
+        logger.debug(f'Found firmware branch: {fw_branch}')
         fb = FirmwareBranch(fw_branch, fw_branch_path)
         hw.firmware_branches.append(fb)
 
         (fw, bd) = scan_dir(fw_branch_path)
         fb.firmwares += fw
 
-        # board file should be only in "." (main) branch, not in other branches
+            # board file should be only in "." (main) branch, not in other branches
 
     # this is the main branch named "."
     fb = FirmwareBranch('.')
@@ -338,7 +327,7 @@ def scan_hw(path):
         if not os.path.isdir(hw_ver_path):
             continue
 
-        logger.debug('Found hw version: %s' % (hw_ver))
+        logger.debug(f'Found hw version: {hw_ver}')
 
         hw = Hardware(path, hw_ver)
         scan_hw_ver(hw)
@@ -361,7 +350,7 @@ def scan_repository(directory):
         if hw_name.startswith('.'):
             continue
 
-        logger.debug('Found hw: %s' % (hw_name))
+        logger.debug(f'Found hw: {hw_name}')
 
         hw_list = scan_hw(hw_name)
 
@@ -404,10 +393,8 @@ def pi(level, msg):
 
 
 def whence_update(linux_firmware, firmware_path, version):
-    f = open(os.path.join(linux_firmware, WHENCE_FILE), 'r')
-    buf = f.read()
-    f.close()
-
+    with open(os.path.join(linux_firmware, WHENCE_FILE), 'r') as f:
+        buf = f.read()
     pattern = r'(File: %s\nVersion: ).*\n' % (firmware_path)
 
     # \g<1> is same as \1 but needed to separate from the version string
@@ -419,16 +406,13 @@ def whence_update(linux_firmware, firmware_path, version):
         print('Failed to update %s to WHENCE: %d' % (firmware_path, sub_count))
         return
 
-    f = open(os.path.join(linux_firmware, WHENCE_FILE), 'w')
-    f.write(buf)
-    f.close()
+    with open(os.path.join(linux_firmware, WHENCE_FILE), 'w') as f:
+        f.write(buf)
 
 
 def whence_add(linux_firmware, firmware_path, version, license_path=None):
-    f = open(os.path.join(linux_firmware, WHENCE_FILE), 'r')
-    buf = f.read()
-    f.close()
-
+    with open(os.path.join(linux_firmware, WHENCE_FILE), 'r') as f:
+        buf = f.read()
     pattern = r'(Driver: ath10k.*?\n\n.*?)\n\n'
 
     # \g<1> is same as \1 but needed to separate from the version string
@@ -446,9 +430,8 @@ def whence_add(linux_firmware, firmware_path, version, license_path=None):
         print('Failed to add %s to WHENCE: %d' % (firmware_path, sub_count))
         return
 
-    f = open(os.path.join(linux_firmware, WHENCE_FILE), 'w')
-    f.write(buf)
-    f.close()
+    with open(os.path.join(linux_firmware, WHENCE_FILE), 'w') as f:
+        f.write(buf)
 
 
 def git_commit(args, msg, repodir, files):
@@ -482,7 +465,7 @@ def cmd_list(args):
 
     hws = scan_repository('.')
     for hw in sorted(hws.values()):
-        pi(level, '%s:' % (hw.name))
+        pi(level, f'{hw.name}:')
         level += 1
 
         # print board files
@@ -501,7 +484,7 @@ def cmd_list(args):
                 # don't print empty branches
                 continue
 
-            pi(level, '%s' % (branch.name))
+            pi(level, f'{branch.name}')
             level += 1
 
             for fw in sorted(branch.firmwares):
@@ -517,11 +500,11 @@ def cmd_list_lib_dir(args):
     ath10k_dir = os.path.join(fw_dir, 'ath10k')
 
     if not os.path.exists(ath10k_dir):
-        print('directory %s does not exist, aborting' % (ath10k_dir))
+        print(f'directory {ath10k_dir} does not exist, aborting')
         sys.exit(1)
 
     if not os.path.isdir(ath10k_dir):
-        print('%s is not a directory, aborting' % (ath10k_dir))
+        print(f'{ath10k_dir} is not a directory, aborting')
         sys.exit(1)
 
     # sort the results based on dirpath
@@ -542,11 +525,11 @@ def cmd_list_lib_dir(args):
                 s = '%s\t%s' % (filename, get_board_crc32(path))
                 found.append(s)
 
-        if len(found) > 0:
+        if found:
             # Just show QCA1234/hw1.0 directories. I would have liked
             # to use os.path functions here but just could not find
             # anything sensible there.
-            pi(0, '%s:' % ('/'.join(dirpath.split('/')[-2:])))
+            pi(0, f"{'/'.join(dirpath.split('/')[-2:])}:")
             for line in found:
                 pi(1, line)
 
@@ -565,23 +548,19 @@ def cmd_get_latest_in_branch(args):
     args_fwbranch = args.get_latest_in_branch[2]
 
     # TODO: hw is always in uppercase and hwver lower case, check that
-    hw_name = '%s %s' % (args_hw, args_hwver)
+    hw_name = f'{args_hw} {args_hwver}'
 
     if hw_name not in hws:
-        print('Did not find hardware: %s' % (hw_name))
+        print(f'Did not find hardware: {hw_name}')
         sys.exit(1)
 
     hw = hws[hw_name]
 
-    fw_branch = None
-
-    for b in hw.firmware_branches:
-        if b.name == args_fwbranch:
-            fw_branch = b
-            break
-
+    fw_branch = next(
+        (b for b in hw.firmware_branches if b.name == args_fwbranch), None
+    )
     if fw_branch is None:
-        print('Did not find firmware branch: %s' % (args_fwbranch))
+        print(f'Did not find firmware branch: {args_fwbranch}')
         sys.exit(1)
 
     if len(fw_branch.firmwares) == 0:
@@ -606,10 +585,10 @@ def cmd_get_latest_in_hw(args):
     args_hwver = args.get_latest[1]
 
     # TODO: hw is always in uppercase and hwver lower case, check that
-    hw_name = '%s %s' % (args_hw, args_hwver)
+    hw_name = f'{args_hw} {args_hwver}'
 
     if hw_name not in hws:
-        print('Did not find hardware: %s' % (hw_name))
+        print(f'Did not find hardware: {hw_name}')
         sys.exit(1)
 
     hw = hws[hw_name]
@@ -636,10 +615,10 @@ def cmd_install(args):
     installdir = os.path.join(linux_firmware, 'ath10k')
 
     if not os.path.isdir(installdir):
-        logger.error('%s is not a directory' % (installdir))
+        logger.error(f'{installdir} is not a directory')
         sys.exit(1)
 
-    logger.debug('Installing to directory %s' % (installdir))
+    logger.debug(f'Installing to directory {installdir}')
 
     for hw in sorted(hws.values()):
         bd_list = hw.board_files
@@ -663,21 +642,15 @@ def cmd_install(args):
         dest = os.path.join(destdir, fw.get_installation_name())
         d = os.path.join(installdir, dest)
         if not os.path.exists(d) or not filecmp.cmp(fw.path, d):
-            installed = []
-
-            if os.path.exists(d):
-                action = 'update'
-            else:
-                action = 'add'
-
-            logger.info('Installing %s (%s)' % (dest, fw.fw_ver))
+            action = 'update' if os.path.exists(d) else 'add'
+            logger.info(f'Installing {dest} ({fw.fw_ver})')
             destpath = install_file(args, fw.path, installdir, dest)
-            installed.append(destpath)
+            installed = [destpath]
             firmware_path = os.path.join('ath10k', dest)
 
             if fw.notice_path:
                 dest = os.path.join(destdir, fw.get_notice_filename())
-                logger.info('Installing %s (%s)' % (dest, fw.fw_ver))
+                logger.info(f'Installing {dest} ({fw.fw_ver})')
                 destpath = install_file(args, fw.notice_path, installdir, dest)
                 installed.append(destpath)
                 notice_path = os.path.join('ath10k', dest)
@@ -695,39 +668,29 @@ def cmd_install(args):
             installed.append(WHENCE_FILE)
 
             # "ath10k: QCA9888 hw2.0: update firmware-5.bin to 10.4-3.5.1-00035"
-            log = 'ath10k: %s: %s %s to %s' % (hw.name,
-                                               action,
-                                               fw.get_installation_name(),
-                                               fw.fw_ver)
+            log = f'ath10k: {hw.name}: {action} {fw.get_installation_name()} to {fw.fw_ver}'
 
             git_commit(args, log, linux_firmware, installed)
         else:
-            logger.debug(
-                'No update needed for %s (%s)' % (dest, fw.fw_ver))
+            logger.debug(f'No update needed for {dest} ({fw.fw_ver})')
 
         # install board files
         for bd in bd_list:
             installed = []
             dest = os.path.join(installdir, bd.path)
             if not os.path.exists(dest) or not filecmp.cmp(bd.path, dest):
-                if os.path.exists(dest):
-                    action = 'update'
-                else:
-                    action = 'add'
-
-                logger.info('Installing %s' % (bd.path))
+                action = 'update' if os.path.exists(dest) else 'add'
+                logger.info(f'Installing {bd.path}')
                 destpath = install_file(args, bd.path, installdir, bd.path)
                 installed.append(destpath)
 
                 # TODO: update WHENCE file when adding a new board
                 # file to linux-firmware
 
-                log = 'ath10k: %s: %s %s' % (hw.name,
-                                             action,
-                                             bd.get_installation_name())
+                log = f'ath10k: {hw.name}: {action} {bd.get_installation_name()}'
                 git_commit(args, log, linux_firmware, installed)
             else:
-                logger.debug('No update needed for %s' % (dest))
+                logger.debug(f'No update needed for {dest}')
 
 
 def main():

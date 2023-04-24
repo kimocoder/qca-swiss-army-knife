@@ -100,7 +100,7 @@ wmi_scan_event_names = [
 
 
 def wmi_event_scan(pevent, trace_seq, event, buf):
-    hdr = struct.unpack("<IIIIII", buf[0:24])
+    hdr = struct.unpack("<IIIIII", buf[:24])
     event = hdr[0]
     reason = hdr[1]
     channel_freq = hdr[2]
@@ -121,7 +121,7 @@ wmi_event_handlers = [
 
 
 def wmi_cmd_start_scan_handler(pevent, trace_seq, event, buf):
-    hdr = struct.unpack("<IIIIIIIIIIIIIII", buf[0:60])
+    hdr = struct.unpack("<IIIIIIIIIIIIIII", buf[:60])
     scan_id = hdr[0]
 
     trace_seq.puts("\t\t\t\tWMI_START_SCAN_CMDID scan_id %d\n" % (scan_id))
@@ -136,7 +136,7 @@ def ath10k_wmi_cmd_handler(pevent, trace_seq, event):
     buf = event['buf'].data
 
     # parse wmi header
-    hdr = struct.unpack("<HH", buf[0:4])
+    hdr = struct.unpack("<HH", buf[:4])
     buf = buf[4:]
 
     cmd_id = hdr[0]
@@ -153,7 +153,7 @@ def ath10k_wmi_event_handler(pevent, trace_seq, event):
     buf_len = long(event['buf_len'])
     buf = event['buf'].data
 
-    hdr = struct.unpack("<HH", buf[0:4])
+    hdr = struct.unpack("<HH", buf[:4])
     cmd_id = hdr[0]
 
     trace_seq.puts("id 0x%x len %d\n" % (cmd_id, buf_len))
@@ -177,7 +177,7 @@ def parse_htt_stats_wal_pdev_txrx(pevent, trace_seq, buf, tlv_length):
     msg_base_len = 136
 
     l = msg_base_len
-    hdr = struct.unpack("<IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII", buf[0:l])
+    hdr = struct.unpack("<IIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIIII", buf[:l])
     buf = buf[l:]
 
     comp_queued = hdr[0]
@@ -221,7 +221,7 @@ def parse_htt_stats_wal_pdev_txrx(pevent, trace_seq, buf, tlv_length):
     msg_base_len = 60
 
     l = msg_base_len
-    hdr = struct.unpack("<IIIIIIIIIIIIIII", buf[0:l])
+    hdr = struct.unpack("<IIIIIIIIIIIIIII", buf[:l])
     buf = buf[l:]
 
     mid_ppdu_route_change = hdr[0]
@@ -246,7 +246,7 @@ def parse_htt_stats_wal_pdev_txrx(pevent, trace_seq, buf, tlv_length):
     msg_base_len = 12
 
     l = msg_base_len
-    hdr = struct.unpack("<III", buf[0:l])
+    hdr = struct.unpack("<III", buf[:l])
     buf = buf[l:]
 
     iram_free_size = hdr[0]
@@ -261,7 +261,7 @@ def parse_htt_stats_rx_reorder(pevent, trace_seq, buf, tlv_length):
     msg_base_len = 56
 
     l = msg_base_len
-    hdr = struct.unpack("<IIIIIIIIIIIIII", buf[0:l])
+    hdr = struct.unpack("<IIIIIIIIIIIIII", buf[:l])
     buf = buf[l:]
 
     deliver_non_qos = hdr[0]

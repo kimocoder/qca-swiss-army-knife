@@ -103,9 +103,7 @@ threads = 1
 class CPWarning():
 
     def __str__(self):
-        return 'CPWarning(%s, %s, %s, %s, %s)' % (self.path, self.lineno,
-                                                  self.tag, self.type,
-                                                  self.msg)
+        return f'CPWarning({self.path}, {self.lineno}, {self.tag}, {self.type}, {self.msg})'
 
     def __init__(self):
         self.path = ''
@@ -214,10 +212,10 @@ def find_tagname(tag_map, filename, lineno):
 def parse_checkpatch_warning(line):
     m = re.match(r'(.*):(\d+): .*:(.*): (.*)', line, re.M | re.I)
     result = CPWarning()
-    result.path = m.group(1)
-    result.lineno = m.group(2)
-    result.type = m.group(3)
-    result.msg = m.group(4)
+    result.path = m[1]
+    result.lineno = m[2]
+    result.type = m[3]
+    result.msg = m[4]
 
     return result
 
@@ -277,17 +275,17 @@ def run_checkpatch_cmd(args, q, tag_map):
 
 def run_checkpatch(args):
     # get all files which need to be checked
-    cmd = 'git ls-tree HEAD %s | cut -f 2' % (DRIVER_DIR)
+    cmd = f'git ls-tree HEAD {DRIVER_DIR} | cut -f 2'
     output = subprocess.check_output(cmd, shell=True)
     driver_files = output.splitlines()
 
     # drop files we need to ignore
     for name in IGNORE_FILES:
-        full_name = '%s%s' % (DRIVER_DIR, name)
+        full_name = f'{DRIVER_DIR}{name}'
         if full_name in driver_files:
             driver_files.remove(full_name)
 
-    logger.debug('driver_files: %s' % (driver_files))
+    logger.debug(f'driver_files: {driver_files}')
 
     # create global index file
     (fd, tmpfilename) = tempfile.mkstemp()
@@ -297,8 +295,8 @@ def run_checkpatch(args):
 
     # FIXME: do we need to call os.close(fd) still?
 
-    cmd = 'gtags -f %s' % (tmpfilename)
-    logger.debug('%s' % (cmd))
+    cmd = f'gtags -f {tmpfilename}'
+    logger.debug(f'{cmd}')
     output = subprocess.check_output(cmd, shell=True)
 
     os.remove(tmpfilename)
@@ -308,7 +306,7 @@ def run_checkpatch(args):
 
     # create tag mapping
     for f in driver_files:
-        cmd = 'global -f %s' % (f)
+        cmd = f'global -f {f}'
         output = subprocess.check_output(cmd, shell=True)
         lines = output.splitlines()
         for l in lines:
@@ -327,7 +325,7 @@ def run_checkpatch(args):
         q.put(f)
 
     # run checkpatch for all files
-    for i in range(threads):
+    for _ in range(threads):
         t = threading.Thread(
             target=run_checkpatch_cmd, args=(args, q, tag_map))
         t.daemon = True

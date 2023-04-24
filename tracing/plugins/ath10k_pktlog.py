@@ -227,7 +227,7 @@ def pktlog_tx_frm_hdr(frame):
         (frame_control, duration_id, addr1a, addr1b, addr1c, addr2a, addr2b, addr2c,
          addr3a, addr3b, addr3c, seq_ctrl) = struct.unpack_from('<HHI2BI2BI2BH', frame, 0)
     except struct.error as e:
-        dbg('failed to parse struct ieee80211_hdr: %s' % (e))
+        dbg(f'failed to parse struct ieee80211_hdr: {e}')
         return
 
     if frame_control & IEEE80211_FCTL_TODS:
@@ -274,8 +274,8 @@ def pktlog_tx_ctrl(buf, hw_type):
         tmp = struct.pack('HHHHHH', 0, 0, 0, 0, 0, 0)
         output_write(tmp)
 
-    txdesc_ctl = hdr.payload[0:]
-    for i in range(num_txctls):
+    txdesc_ctl = hdr.payload[:]
+    for _ in range(num_txctls):
         if len(txdesc_ctl) >= 4:
             txctl, = struct.unpack_from('<I', txdesc_ctl)
             txdesc_ctl = txdesc_ctl[4:]
@@ -297,7 +297,7 @@ def pktlog_tx_msdu_id(buf, hw_type):
 
         # parse struct msdu_id_info
         # hdr (12) + num_msdu (4) + bound_bmap (24) = 40
-        msdu_info = hdr.payload[0:28]
+        msdu_info = hdr.payload[:28]
         id = hdr.payload[28:]
         num_msdu, = struct.unpack_from('I', msdu_info)
         output_write(msdu_info)
@@ -313,14 +313,14 @@ def pktlog_tx_msdu_id(buf, hw_type):
 
         # parse struct msdu_id_info
         # hdr (16) + num_msdu (4) + bound_bmap (1) = 21
-        msdu_info = hdr.payload[0:5]
+        msdu_info = hdr.payload[:5]
         id = hdr.payload[5:]
         num_msdu, = struct.unpack_from('I', msdu_info)
         output_write(msdu_info)
 
         max_pkt_info_msdu_id = MAX_10_4_PKT_INFO_MSDU_ID
 
-    for i in range(max_pkt_info_msdu_id):
+    for _ in range(max_pkt_info_msdu_id):
         if num_msdu > 0:
             num_msdu = num_msdu - 1
             msdu_id, = struct.unpack_from('<H', id)
@@ -348,7 +348,7 @@ def ath10k_htt_pktlog_handler(pevent, trace_seq, event):
         hdr = Ath10kPktlog_10_4_Hdr()
 
     hdr.unpack(buf, offset)
-    offset = offset + hdr.hdr_len
+    offset += hdr.hdr_len
 
     trace_seq.puts('%s\n' % (hdr))
 
@@ -358,13 +358,13 @@ def ath10k_htt_pktlog_handler(pevent, trace_seq, event):
         pktlog_tx_ctrl(buf, hw_type)
     elif hdr.log_type == ATH10K_PKTLOG_TYPE_TX_MSDU_ID:
         pktlog_tx_msdu_id(buf, hw_type)
-    elif hdr.log_type == ATH10K_PKTLOG_TYPE_TX_STAT or \
-            hdr.log_type == ATH10K_PKTLOG_TYPE_RX_STAT or \
-            hdr.log_type == ATH10K_PKTLOG_TYPE_RC_FIND or \
-            hdr.log_type == ATH10K_PKTLOG_TYPE_RC_UPDATE:
-        output_write(buf[0: offset + hdr.size])
-    else:
-        pass
+    elif hdr.log_type in [
+        ATH10K_PKTLOG_TYPE_TX_STAT,
+        ATH10K_PKTLOG_TYPE_RX_STAT,
+        ATH10K_PKTLOG_TYPE_RC_FIND,
+        ATH10K_PKTLOG_TYPE_RC_UPDATE,
+    ]:
+        output_write(buf[:offset + hdr.size])
 
 
 def ath10k_htt_rx_desc_handler(pevent, trace_seq, event):
@@ -382,7 +382,7 @@ def ath10k_htt_rx_desc_handler(pevent, trace_seq, event):
         # rx_desc size for QCA988x chipsets is 248
         hdr.size = 248
         output_write(hdr.pack())
-        output_write(rxdesc[0: 32])
+        output_write(rxdesc[:32])
         output_write(rxdesc[36: 56])
         output_write(rxdesc[76: 208])
         output_write(rxdesc[228:])
@@ -406,7 +406,7 @@ def ath10k_htt_rx_desc_handler(pevent, trace_seq, event):
         # rx_desc size for QCA9984 and QCA9889 chipsets is 296
         hdr.size = 296
         output_write(hdr.pack())
-        output_write(rxdesc[0: 4])
+        output_write(rxdesc[:4])
         output_write(rxdesc[4: 8])
         output_write(rxdesc[12: 24])
         output_write(rxdesc[24: 40])
@@ -447,7 +447,7 @@ def ath10k_txrx_tx_unref_handler(pevent, trace_seq, event):
 def ath10k_tx_hdr_handler(pevent, trace_seq, event):
     buf = event['data'].data
 
-    pktlog_tx_frm_hdr(buf[0:])
+    pktlog_tx_frm_hdr(buf[:])
 
 
 def register(pevent):

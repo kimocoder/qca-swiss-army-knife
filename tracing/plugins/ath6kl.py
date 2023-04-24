@@ -30,7 +30,7 @@ def hexdump(buf, prefix=None):
     s_len = len(s)
     result = ""
 
-    if prefix == None:
+    if prefix is None:
         prefix = ""
 
     for i in range(s_len / 2):
@@ -47,7 +47,7 @@ def hexdump(buf, prefix=None):
     return result
 
 def wmi_event_bssinfo(pevent, trace_seq, event, buf):
-    hdr = struct.unpack("<HBB6BH", buf[0:12])
+    hdr = struct.unpack("<HBB6BH", buf[:12])
     channel = hdr[0]
     frame_type = hdr[1]
     snr = hdr[2]
@@ -62,7 +62,7 @@ wmi_event_handlers = [
     ]
 
 def wmi_cmd_set_bss_filter_handler(pevent, trace_seq, event, buf):
-    hdr = struct.unpack("<BBHI", buf[0:8])
+    hdr = struct.unpack("<BBHI", buf[:8])
     bss_filter = hdr[0]
     ie_mask = hdr[3]
 
@@ -70,7 +70,7 @@ def wmi_cmd_set_bss_filter_handler(pevent, trace_seq, event, buf):
                    (bss_filter, ie_mask))
 
 def wmi_cmd_set_probed_ssid_handler(pevent, trace_seq, event, buf):
-    hdr = struct.unpack("<BBB", buf[0:3])
+    hdr = struct.unpack("<BBB", buf[:3])
     entry_index = hdr[0]
     flag = hdr[1]
     ssid_len = hdr[2]
@@ -96,7 +96,7 @@ def ath6kl_wmi_cmd_handler(pevent, trace_seq, event):
     buf_len = long(event['buf_len'])
     buf = event['buf'].data
 
-    hdr = struct.unpack("<HHH", buf[0:6])
+    hdr = struct.unpack("<HHH", buf[:6])
     cmd_id = hdr[0]
     if_idx = hdr[1] & WMI_CMD_HDR_IF_ID_MASK
 
@@ -111,7 +111,7 @@ def ath6kl_wmi_event_handler(pevent, trace_seq, event):
     buf_len = long(event['buf_len'])
     buf = event['buf'].data
 
-    hdr = struct.unpack("<HHH", buf[0:6])
+    hdr = struct.unpack("<HHH", buf[:6])
     cmd_id = hdr[0]
     if_idx = hdr[1] & WMI_CMD_HDR_IF_ID_MASK
 
@@ -126,7 +126,7 @@ def ath6kl_htc_tx_handler(pevent, trace_seq, event):
     buf_len = long(event['buf_len'])
     buf = event['buf'].data
 
-    hdr = struct.unpack("<BBHBB", buf[0:6])
+    hdr = struct.unpack("<BBHBB", buf[:6])
     endpoint = hdr[0]
     flags = hdr[1]
     payload_len = hdr[2]
@@ -157,7 +157,7 @@ def ath6kl_htc_rx_handler(pevent, trace_seq, event):
     buf_len = long(event['buf_len'])
     buf = event['buf'].data
 
-    hdr = struct.unpack("<BBHBB", buf[0:6])
+    hdr = struct.unpack("<BBHBB", buf[:6])
     endpoint = hdr[0]
     flags = hdr[1]
     payload_len = hdr[2]
@@ -190,11 +190,7 @@ def ath6kl_sdio_handler(pevent, trace_seq, event):
     buf_len = long(event['buf_len'])
     buf = event['buf'].data
 
-    if tx == 1:
-        direction = "tx"
-    else:
-        direction = "rx"
-
+    direction = "tx" if tx == 1 else "rx"
     trace_seq.puts("%s addr 0x%x flags 0x%x buf_len %d\n" %
                    (direction, addr, flags, buf_len))
     trace_seq.puts("%s\n" % hexdump(buf))
@@ -209,17 +205,13 @@ def ath6kl_sdio_scat_handler(pevent, trace_seq, event):
     len_array_data = event['len_array'].data
     data = event['data'].data
 
-    if tx == 1:
-        direction = "tx"
-    else:
-        direction = "rx"
-
+    direction = "tx" if tx == 1 else "rx"
     trace_seq.puts("%s addr 0x%x flags 0x%x entries %d total_len %d\n" %
                    (direction, addr, flags, entries, total_len))
 
     offset = 0
 
-    len_array = struct.unpack("<%dI" % entries, len_array_data[0:8])
+    len_array = struct.unpack("<%dI" % entries, len_array_data[:8])
 
     for i in range(entries):
         length = len_array[i]
