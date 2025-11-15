@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 #
 # Copyright (c) 2016 Qualcomm Atheros, Inc.
 # Copyright (c) 2018, The Linux Foundation. All rights reserved.
@@ -32,6 +32,7 @@ blacklist = False
 
 BRANCH_DEFAULT_PRIORITY = 1000
 BRANCH_PRIORITY_FILE = '.priority'
+BRANCH_IGNORE_FILE = '.ignore'
 WHENCE_FILE = 'WHENCE'
 
 FIRMWARE_BLACKLIST = [
@@ -85,7 +86,10 @@ class FirmwareBranch():
             return False
 
         if self.priority != other.priority:
-            return self.priority < other.priority
+            if self.priority < other.priority:
+                return True
+            else:
+                return False
 
         return self.name < other.name
 
@@ -306,6 +310,10 @@ def scan_hw_ver(hw):
         if not os.path.isdir(fw_branch_path):
             continue
 
+        if os.path.exists(os.path.join(fw_branch_path, BRANCH_IGNORE_FILE)):
+            logger.debug('Ignoring firmware branch: %s' % (fw_branch))
+            continue
+
         logger.debug('Found firmware branch: %s' % (fw_branch))
         fb = FirmwareBranch(fw_branch, fw_branch_path)
         hw.firmware_branches.append(fb)
@@ -388,14 +396,14 @@ def install_file(args, src, installdir, dest):
 
 def get_firmware_version(path):
     cmd = ['ath10k-fwencoder', '--info', path]
-    info = subprocess.check_output(cmd)
+    info = subprocess.check_output(cmd, universal_newlines=True)
     msg = email.message_from_string(info)
     return msg['FirmwareVersion']
 
 
 def get_board_crc32(path):
     cmd = ['ath10k-fwencoder', '--crc32', path]
-    return subprocess.check_output(cmd).strip()
+    return subprocess.check_output(cmd, universal_newlines=True).strip()
 
 
 # print indent
@@ -436,7 +444,7 @@ def whence_add(linux_firmware, firmware_path, version, license_path=None):
     replace += r'Version: %s\n' % (version)
 
     if license_path is not None:
-        replace += r'Licence: %s\n' % (license_path)
+        replace += r'File: %s\n' % (license_path)
 
     replace += r'\n'
 
@@ -530,13 +538,13 @@ def cmd_list_lib_dir(args):
         for filename in sorted(filenames):
             path = os.path.join(dirpath, filename)
 
-            match = re.match('firmware.*\.bin', filename)
+            match = re.match(r'firmware.*\.bin', filename)
             if match is not None:
                 # this is a firmware file
                 s = '%s\t%s' % (filename, get_firmware_version(path))
                 found.append(s)
 
-            match = re.match('board.*\.bin', filename)
+            match = re.match(r'board.*\.bin', filename)
             if match is not None:
                 # this is a board file
                 s = '%s\t%s' % (filename, get_board_crc32(path))
@@ -641,9 +649,8 @@ def cmd_install(args):
 
     logger.debug('Installing to directory %s' % (installdir))
 
+    # install firmware files
     for hw in sorted(hws.values()):
-        bd_list = hw.board_files
-
         # every Hardware() should have at least one firmware branch, the
         # main '.' branch so no need to check the length
         fw_list = sorted(sorted(hw.firmware_branches)[-1].firmwares)
@@ -705,7 +712,10 @@ def cmd_install(args):
             logger.debug(
                 'No update needed for %s (%s)' % (dest, fw.fw_ver))
 
-        # install board files
+    # install board files
+    for hw in sorted(hws.values()):
+        bd_list = hw.board_files
+
         for bd in bd_list:
             installed = []
             dest = os.path.join(installdir, bd.path)

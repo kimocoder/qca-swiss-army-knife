@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 # Copyright (c) 2015-2017 Qualcomm Atheros, Inc.
 # Copyright (c) 2018, The Linux Foundation. All rights reserved.
@@ -25,16 +25,13 @@ import sys
 import argparse
 import re
 import tempfile
-try:
-    import queue as Queue
-except ImportError:
-    import Queue
+import queue
 import threading
 import string
 import hashlib
 import distutils.spawn
 
-CHECKPATCH_COMMIT = '852d095d16a6298834839f441593f59d58a31978'
+CHECKPATCH_COMMIT = '99b70ece33d87500ef7bee8e32cb99772c45ce14'
 
 GIT_URL = 'https://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/plain/scripts/checkpatch.pl?id=%s'
 
@@ -89,6 +86,7 @@ checkpatch_filter = [
     ('wmi_tlv_policy', 'SPACING'),
     ('ath10k_core_register_work', 'RETURN_VOID'),
     ('ATH10K_HW_RATE_CCK_.*', 'LONG_LINE'),
+    ('ATH10K_DFS_STAT_INC', 'MACRO_ARG_UNUSED'),
 
     # checkpatch doesn't like uninitialized_var()
     ('ath10k_init_hw_params', 'FUNCTION_ARGUMENTS'),
@@ -122,7 +120,7 @@ def run_gcc(args):
 
     cmd = 'rm -f %s/*.o' % (DRIVER_DIR)
     logger.debug('%s' % cmd)
-    subprocess.call(cmd, shell=True)
+    subprocess.call(cmd, shell=True, universal_newlines=True)
 
     cmd = ['make', '-k', '-j', str(threads)]
 
@@ -140,7 +138,7 @@ def run_gcc(args):
 
     logger.debug('%s' % cmd)
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                         env=env)
+                         env=env, universal_newlines=True)
     (stdout, stderr) = p.communicate()
 
     stderr = stderr.strip()
@@ -161,7 +159,8 @@ def run_sparse(args):
     cmd = ['make', '-k', '-j',
            str(threads), DRIVER_DIR, 'C=2', 'CF="-D__CHECK_ENDIAN__"']
     logger.debug('%s' % cmd)
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                         universal_newlines=True)
     (stdout, stderr) = p.communicate()
 
     stderr = stderr.strip()
@@ -203,7 +202,7 @@ def find_tagname(tag_map, filename, lineno):
 
 
 def parse_checkpatch_warning(line):
-    m = re.match(r'(.*):(\d+): .*:(.*): (.*)', line, re.M | re.I)
+    m = re.match(r'(.*?):(\d+): .*?:(.*?): (.*)', line, re.M | re.I)
     result = CPWarning()
     result.path = m.group(1)
     result.lineno = m.group(2)
@@ -239,13 +238,13 @@ def run_checkpatch_cmd(args, q, tag_map):
     while True:
         try:
             f = q.get_nowait()
-        except Queue.Empty:
+        except queue.Empty:
             # no more files to check
             break
 
         cmd = checkpatch_cmd + [f]
-        p = subprocess.Popen(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                             universal_newlines=True)
         (stdoutdata, stderrdata) = p.communicate()
 
         if stdoutdata is None:
@@ -269,7 +268,7 @@ def run_checkpatch_cmd(args, q, tag_map):
 def run_checkpatch(args):
     # get all files which need to be checked
     cmd = 'git ls-tree HEAD %s | cut -f 2' % (DRIVER_DIR)
-    output = subprocess.check_output(cmd, shell=True)
+    output = subprocess.check_output(cmd, shell=True, universal_newlines=True)
     driver_files = output.splitlines()
 
     # drop files we need to ignore
@@ -290,7 +289,7 @@ def run_checkpatch(args):
 
     cmd = 'gtags -f %s' % (tmpfilename)
     logger.debug('%s' % (cmd))
-    output = subprocess.check_output(cmd, shell=True)
+    output = subprocess.check_output(cmd, shell=True, universal_newlines=True)
 
     os.remove(tmpfilename)
 
@@ -299,8 +298,12 @@ def run_checkpatch(args):
 
     # create tag mapping
     for f in driver_files:
+        # global gives an error from Kconfig and Makefile
+        if f.endswith('Kconfig') or f.endswith('Makefile'):
+            continue
+
         cmd = 'global -f %s' % (f)
-        output = subprocess.check_output(cmd, shell=True)
+        output = subprocess.check_output(cmd, shell=True, universal_newlines=True)
         lines = output.splitlines()
         for l in lines:
             columns = l.split()
@@ -312,7 +315,7 @@ def run_checkpatch(args):
 
             tag_map[f].append((line, tagname))
 
-    q = Queue.Queue()
+    q = queue.Queue()
 
     for f in driver_files:
         q.put(f)
@@ -338,33 +341,36 @@ def show_version(args):
 
     run = subprocess.check_output
 
-    f = open(sys.argv[0], 'r')
+    f = open(sys.argv[0], 'rb')
     ath10kcheck_md5sum = hashlib.md5(f.read()).hexdigest()
     f.close()
 
     try:
-        gcc_version = run(['gcc', '--version']).splitlines()[0]
+        gcc_version = run(['gcc', '--version'],
+                          universal_newlines=True).splitlines()[0]
     except:
         pass
 
     try:
-        sparse_version = run(['sparse', '--version']).splitlines()[0]
+        sparse_version = run(['sparse', '--version'],
+                             universal_newlines=True).splitlines()[0]
     except:
         pass
 
     try:
-        checkpatch_version = run(
-            ['checkpatch.pl', '--version']).splitlines()[1]
+        checkpatch_version = run(['checkpatch.pl', '--version'],
+                                 universal_newlines=True).splitlines()[1]
         path = distutils.spawn.find_executable(
             'checkpatch.pl', os.environ['PATH'])
-        f = open(path, 'r')
+        f = open(path, 'rb')
         checkpatch_md5sum = hashlib.md5(f.read()).hexdigest()
         f.close()
     except:
         pass
 
     try:
-        gtags_version = run(['gtags', '--version']).splitlines()[0]
+        gtags_version = run(['gtags', '--version'],
+                            universal_newlines=True).splitlines()[0]
     except:
         pass
 
@@ -464,7 +470,7 @@ $CHECKPATCH_CMDLINE
         checkpatch = True
 
     try:
-        cores = subprocess.check_output(['nproc'])
+        cores = subprocess.check_output(['nproc'], universal_newlines=True)
     except (OSError, subprocess.CalledProcessError):
         cores = '4'
         logger.warning('Failed to run nproc, assuming %s cores' % (cores))

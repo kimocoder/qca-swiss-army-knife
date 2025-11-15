@@ -15,7 +15,7 @@
 # ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 # OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 #
-# Run 'ath11k-check --help' to see the instructions
+# Run 'ath12k-check --help' to see the instructions
 #
 
 import subprocess
@@ -34,74 +34,81 @@ import shutil
 CHECKPATCH_COMMIT = '99b70ece33d87500ef7bee8e32cb99772c45ce14'
 CHECKPATCH_MD5SUM = 'b3c97930952745672f3408dabc244843'
 
-GIT_URL = 'https://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/plain/scripts/checkpatch.pl?id=%s'
+GIT_URL = 'https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/plain/scripts/checkpatch.pl?id=%s'
 
-DRIVER_DIR = 'drivers/net/wireless/ath/ath11k/'
+DRIVER_DIR = 'drivers/net/wireless/ath/ath12k/'
 
 FILTER_REGEXP = r'/ath'
 
+# Example: CONFIG_CC_VERSION_TEXT="x86_64-linux-gcc (GCC) 13.2.0"
+CONFIG_CC_REGEXP = r'^CONFIG_CC_VERSION_TEXT="(.*)"$'
+
 IGNORE_FILES = []
 
-CHECKPATCH_IGNORE = ['MSLEEP',
-                     'USLEEP_RANGE',
-                     'PRINTK_WITHOUT_KERN_LEVEL',
-
-                     # ath10k does not follow networking comment style
-                     'NETWORKING_BLOCK_COMMENT_STYLE',
-
-                     'LINUX_VERSION_CODE',
-                     'COMPLEX_MACRO',
-                     'PREFER_DEV_LEVEL',
-                     'PREFER_PR_LEVEL',
-                     'COMPARISON_TO_NULL',
-                     'BIT_MACRO',
-                     'CONSTANT_COMPARISON',
-                     'MACRO_WITH_FLOW_CONTROL',
-
-                     # Spams hundreds of lines useless 'struct should
-                     # normally be const' warnings, maybe a bug in
-                     # checkpatch?
-                     'CONST_STRUCT',
-
-                     # TODO: look like valid warnings, investigate
-                     'MACRO_ARG_REUSE',
-                     'OPEN_ENDED_LINE',
-                     'FUNCTION_ARGUMENTS',
-                     'CONFIG_DESCRIPTION',
-                     'ASSIGNMENT_CONTINUATIONS',
-                     'UNNECESSARY_PARENTHESES',
-
-                     # Not sure if these really useful warnings,
-                     # disable for now.
-                     'MACRO_ARG_PRECEDENCE',
-
-                     'BOOL_MEMBER',
-
-                     # TODO: ath11k uses volatile for now, fix it
-                     'VOLATILE',
-
-                     # TODO: document all DT usage in ath11k
-                     'UNDOCUMENTED_DT_STRING',
-                     ]
+CHECKPATCH_IGNORE = [
+    # some find extra parentheses helpful so ignore the warnings
+    'UNNECESSARY_PARENTHESES',
+]
 
 CHECKPATCH_OPTS = ['--strict', '-q', '--terse', '--no-summary',
                    '--max-line-length=90', '--show-types']
 
 checkpatch_filter = [
-    ('ath11k_read_simulate_fw_crash', 'LONG_LINE'),
+    ('ath12k_wifi7_dp_mon_hal_rx_parse_eht_non_mumimo_user', 'LONG_LINE'),
+    ('ath12k_wifi7_dp_mon_hal_rx_parse_eht_sig_ndp', 'LONG_LINE'),
+    ('ath12k_wifi7_dp_mon_hal_rx_parse_eht_sig_non_ofdma', 'LONG_LINE'),
+    ('ath12k_wifi7_dp_mon_hal_rx_parse_non_ofdma_users', 'LONG_LINE'),
+    ('ath12k_wifi7_dp_mon_hal_rx_parse_user_info', 'LONG_LINE'),
+    ('ath12k_wifi7_dp_mon_hal_rx_parse_usig_overflow', 'LONG_LINE'),
+    ('ath12k_wifi7_dp_mon_parse_he_sig_b1_mu', 'LONG_LINE'),
+    ('ath12k_wifi7_dp_mon_parse_he_sig_b2_mu', 'LONG_LINE'),
+    ('ath12k_wifi7_dp_mon_parse_he_sig_mu', 'LONG_LINE'),
+    ('ath12k_wifi7_dp_mon_rx_handle_ofdma_info', 'LONG_LINE'),
+    ('ath12k_wifi7_dp_mon_rx_populate_mu_user_info', 'LONG_LINE'),
     ('qmi_wlanfw_respond_mem_req_msg_v01', 'LONG_LINE'),
-    ('DEFINE_EVENT', 'MACRO_ARG_UNUSED'),
+    ('qmi_wlanfw_host_cap_req_msg_v01', 'LONG_LINE'),
+    ('qmi_wlfw_qdss_trace_config_download_req_msg_v01_ei', 'LONG_LINE'),
+    ('qmi_wlanfw_qdss_trace_config_download_resp_msg_v01_ei', 'LONG_LINE'),
+
+    # workaround for long lines in
+    # qmi_wlfw_qdss_trace_config_download_req_msg_v01_ei, for some
+    # reason gtags claim they are part of
+    # ATH12K_QMI_MAX_CHUNK_SIZE
+    ('ATH12K_QMI_MAX_CHUNK_SIZE', 'LONG_LINE'),
+
+    # allow long line copyrights
+    # note gtags returns None so search for the literal string
+    ('Copyright (c)', 'LONG_LINE_COMMENT'),
+
+    # trace.h has warnings which don't make sense to fix
+    ('TRACE_SYSTEM', 'OPEN_ENDED_LINE'),
+
+    # couldn't figure out how to make checkpatch happy with these macros
+    ('SVC', 'COMPLEX_MACRO'),
+    ('C2S', 'COMPLEX_MACRO'),
+    ('C2S', 'MACRO_WITH_FLOW_CONTROL'),
+
+    # this use of volatile should be ok
+    ('ath12k_hal_srng_access_begin', 'VOLATILE'),
+    ('ath12k_hal_srng_access_end', 'VOLATILE'),
+    ('hal_srng', 'VOLATILE'),
+
+    # __ath12k_dbg has to use dev_printk() so that debug_mask always work
+    ('__ath12k_dbg', 'PREFER_DEV_LEVEL'),
+    ('__ath12k_dbg', 'PREFER_PR_LEVEL'),
+
+    # couldn't figure a way to avoid the reuse warning
+    ('for_each_ar', 'MACRO_ARG_REUSE'),
 ]
 
 sparse_filter = [
-    r'warning: dubious: x & !y',
     # sparse doesn't correctly handle guard()
     r'warning: context imbalance in .* - wrong count at exit',
 ]
 
 # global variables
 
-logger = logging.getLogger('ath11k-check')
+logger = logging.getLogger('ath12k-check')
 
 threads = 1
 
@@ -125,7 +132,7 @@ def run_gcc(args):
     # to disable utf-8 from gcc, easier to paste that way
     os.environ['LC_CTYPE'] = 'C'
 
-    cmd = 'rm -f %s/*.o' % (DRIVER_DIR)
+    cmd = 'find %s -name "*.o" -type f -delete' % (DRIVER_DIR)
     logger.debug('%s' % cmd)
     subprocess.call(cmd, shell=True, universal_newlines=True)
 
@@ -230,16 +237,30 @@ def parse_checkpatch_warning(line):
 
 
 def is_filtered(cpwarning):
-    if cpwarning.tag is None:
-        return False
-
     for (tag, type) in checkpatch_filter:
-        matchobj = re.match(tag, cpwarning.tag)
-        if matchobj is None:
-            continue
+        if cpwarning.tag is not None:
+            # the global tool was able to find a tag name for this
+            # line so use it directly
+            matchobj = re.match(tag, cpwarning.tag)
+            if matchobj is None:
+                continue
 
-        if cpwarning.type == type:
-            return True
+            if cpwarning.type == type:
+                return True
+        else:
+            # the global tool was not able to find a tag name for this
+            # line so instead check the actual line in the file
+            f = open(cpwarning.path)
+            buf = f.read()
+            f.close()
+
+            lineno = int(cpwarning.lineno) - 1
+            lines = buf.splitlines()
+            line = lines[lineno]
+            logger.debug('file %r tag %r line %r' % (cpwarning.path, tag, line))
+
+            if tag in line:
+                return True
 
     return False
 
@@ -289,6 +310,11 @@ def run_checkpatch_cmd(args, q, tag_map):
 
         q.task_done()
 
+# get all driver files which are commited to git, includes Kconfig, Makefile etc
+def get_commited_files():
+    cmd = ['git', 'ls-tree', '-r', '--name-only', 'HEAD', DRIVER_DIR]
+    output = subprocess.check_output(cmd, universal_newlines=True)
+    return output.splitlines()
 
 def run_checkpatch(args):
     md5sum = get_checkpatch_md5sum()
@@ -296,10 +322,7 @@ def run_checkpatch(args):
         print('WARNING: checkpatch.pl md5sum %s does not match with %s' %
               (md5sum, CHECKPATCH_MD5SUM))
 
-    # get all files which need to be checked
-    cmd = 'git ls-tree HEAD %s | cut -f 2' % (DRIVER_DIR)
-    output = subprocess.check_output(cmd, shell=True, universal_newlines=True)
-    driver_files = output.splitlines()
+    driver_files = get_commited_files()
 
     # drop files we need to ignore
     for name in IGNORE_FILES:
@@ -361,9 +384,14 @@ def run_checkpatch(args):
 
     return 0
 
+def run_kdoc(args):
+    p = subprocess.run(['scripts/kernel-doc', '-Werror', '-none'] +
+                       get_commited_files())
+    return p.returncode
 
 def show_version(args):
-    gcc_version = 'not found'
+    host_gcc_version = 'not found'
+    config_cc_version = 'not found'
     sparse_version = 'not found'
     checkpatch_version = 'not found'
     checkpatch_md5sum = 'N/A'
@@ -372,12 +400,21 @@ def show_version(args):
     run = subprocess.check_output
 
     f = open(sys.argv[0], 'rb')
-    ath11kcheck_md5sum = hashlib.md5(f.read()).hexdigest()
+    ath12kcheck_md5sum = hashlib.md5(f.read()).hexdigest()
     f.close()
 
     try:
-        gcc_version = run(['gcc', '--version'],
-                          universal_newlines=True).splitlines()[0]
+        host_gcc_version = run(['gcc', '--version'],
+                               universal_newlines=True).splitlines()[0]
+    except:
+        pass
+
+    try:
+        f = open('.config')
+        m = re.search(CONFIG_CC_REGEXP, f.read(), re.MULTILINE)
+        if m is not None:
+            config_cc_version = m.group(1)
+        f.close()
     except:
         pass
 
@@ -400,10 +437,11 @@ def show_version(args):
     except:
         pass
 
-    print('ath11k-check (md5sum %s)' % (ath11kcheck_md5sum))
+    print('ath12k-check (md5sum %s)' % (ath12kcheck_md5sum))
     print()
     print('python:\t\t%s' % (sys.version))
-    print('gcc:\t\t%s' % (gcc_version))
+    print('host gcc:\t%s' % (host_gcc_version))
+    print('config cc:\t%s' % (config_cc_version))
     print('sparse:\t\t%s' % (sparse_version))
     print('checkpatch.pl:\t%s (md5sum %s)' % (checkpatch_version, checkpatch_md5sum))
     print('gtags:\t\t%s' % (gtags_version))
@@ -416,14 +454,14 @@ def main():
 
     checkpatch_url = GIT_URL % (CHECKPATCH_COMMIT)
 
-    description = '''ath11k source code checker
+    description = '''ath12k source code checker
 
 Runs various tests (gcc, sparse and checkpatch) with filtering
 unnecessary warnings away, the goal is to have empty output from the
 script.
 
 Run this from the main kernel source directory which is preconfigured
-with ath11k enabled. gcc recompilation is forced every time,
+with ath12k enabled. gcc recompilation of ath12k is forced every time,
 irrespective if there are any changes in source or not. So this can be
 run multiple times and every time the same warnings will appear.
 
@@ -438,14 +476,56 @@ Requirements (all available in $PATH):
 
     s = '''Installation:
 
-As checkpatch is evolving this script always matches a certain version
-of checkpatch. Download the checkpatch version from the URL below and
-install it somewhere in your $$PATH:
+It is assumed below that ~/bin is part of user's $$PATH. If it's not,
+replace ~/bin with a suitable directory.
 
-$CHECKPATCH_URL
+To install or update to the latest version of ath12k-check:
 
-Alternatively if you want manually run checkpatch with the same
-settings as ath11k-check uses here's the command line:
+wget https://github.com/qca/qca-swiss-army-knife/raw/master/tools/scripts/ath12k/ath12k-check
+cp ath12k-check ~/bin/
+
+It's strongly recommend to use the latest GCC version from crosstool:
+
+https://mirrors.edge.kernel.org/pub/tools/crosstool/
+
+Unpack the compiler for example to /opt/cross/ and in the Linux kernel
+sources create a new file called GNUmakefile with contents:
+
+ARCH=x86
+CROSS_COMPILE=/opt/cross/gcc-13.2.0-nolibc/x86_64-linux/bin/x86_64-linux-
+export ARCH
+export CROSS_COMPILE
+
+Now the kernel will be compiled with the compiler from /opt/cross.
+
+Latest development version of sparse is needed, install it manually
+from the git repository:
+
+git clone https://git.kernel.org/pub/scm/devel/sparse/sparse.git/
+cd sparse
+make
+cp sparse ~/bin/
+
+As checkpatch is evolving and new tests are added, it's important that
+a correct version of checkpatch is used. If a wrong version is used
+ath12k-check will warn about that. To download the correct checkpatch
+version and install it to ~/bin:
+
+wget -O checkpatch.pl $CHECKPATCH_URL
+cp checkpatch.pl ~/bin/
+
+Note that the URL in above wget command is dynamically created and
+will change everytime ath12k-check is updated to use a new version of
+checkpatch.pl
+
+For gtags program you need to install package named global, for
+example in Debian/Ubuntu you can do that using apt:
+
+apt install global
+
+Alternatively (but not recommended!) if you want manually run
+checkpatch with the same settings as ath12k-check uses here's the
+command line:
 
 $CHECKPATCH_CMDLINE
 '''
@@ -524,6 +604,11 @@ $CHECKPATCH_CMDLINE
         if ret != 0:
             logger.debug('checkpatch failed: %d', ret)
             sys.exit(3)
+
+    ret = run_kdoc(args)
+    if ret != 0:
+        logger.debug('kernel-doc failed: %d', ret)
+        sys.exit(4)
 
 if __name__ == "__main__":
     main()

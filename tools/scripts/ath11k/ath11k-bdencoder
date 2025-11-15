@@ -1,7 +1,7 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 #
-# Copyright (c) 2015 Qualcomm Atheros, Inc.
-# Copyright (c) 2018, The Linux Foundation. All rights reserved.
+# Copyright (c) 2015-2017 Qualcomm Atheros, Inc.
+# Copyright (c) 2018-2019, The Linux Foundation. All rights reserved.
 #
 # Permission to use, copy, modify, and/or distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
@@ -14,6 +14,8 @@
 # WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
 # ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 # OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+#
+# Run 'ath11k-bdencoder --help' to see the instructions
 #
 
 import struct
@@ -28,31 +30,27 @@ import subprocess
 import logging
 import sys
 import shutil
-import mailbox
 
-MAX_BUF_LEN = 2000000
+MAX_BUF_LEN = 20000000
 
 # the signature length also includes null byte and padding
-ATH10K_BOARD_SIGNATURE = b"QCA-ATH10K-BOARD"
-ATH10K_BOARD_SIGNATURE_LEN = 20
+ATH11K_BOARD_SIGNATURE = b"QCA-ATH11K-BOARD"
+ATH11K_BOARD_SIGNATURE_LEN = 20
 
 PADDING_MAGIC = 0x6d
 DEFAULT_BD_API = 2
 DEFAULT_BOARD_FILE = 'board-%d.bin' % DEFAULT_BD_API
 DEFAULT_JSON_FILE = 'board-%d.json' % DEFAULT_BD_API
 TYPE_LENGTH_SIZE = 8
-BIN_SUFFIX = '.bin'
 
-ATH10K_FIRMWARE_URL = 'https://github.com/kvalo/ath10k-firmware/commit'
+ATH11K_BD_IE_BOARD = 0
+ATH11K_BD_IE_REGDB = 1
 
-ATH10K_BD_IE_BOARD = 0
-ATH10K_BD_IE_BOARD_EXT = 1
+ATH11K_BD_IE_BOARD_NAME = 0
+ATH11K_BD_IE_BOARD_DATA = 1
 
-ATH10K_BD_IE_BOARD_NAME = 0
-ATH10K_BD_IE_BOARD_DATA = 1
-
-ATH10K_BD_IE_BOARD_EXT_NAME = 0
-ATH10K_BD_IE_BOARD_EXT_DATA = 1
+ATH11K_BD_IE_REGDB_NAME = 0
+ATH11K_BD_IE_REGDB_DATA = 1
 
 
 def padding_needed(len):
@@ -72,18 +70,10 @@ def add_ie(buf, offset, id, value):
         struct.pack_into('<B', padding, i, PADDING_MAGIC)
 
     fmt = '<2i%ds%ds' % (len(value), padding_len)
-    if not isinstance(value, bytes):
-        value = value.encode()
     struct.pack_into(fmt, buf, offset, id, len(value), value, padding.raw)
     offset = offset + TYPE_LENGTH_SIZE + len(value) + padding_len
 
     return offset
-
-
-def xclip(msg):
-    p = subprocess.Popen(['xclip', '-selection', 'clipboard'],
-                         stdin=subprocess.PIPE)
-    p.communicate(msg.encode())
 
 
 # to workaround annoying python feature of returning negative hex values
@@ -100,6 +90,135 @@ def pretty_array_str(array):
     return '\',\''.join(array)
 
 
+class RegdbName():
+    @staticmethod
+    def parse_ie(buf, offset, length):
+        self = RegdbName()
+        fmt = '<%ds' % length
+        (name, ) = struct.unpack_from(fmt, buf, offset)
+        self.name = name.decode()
+
+        logging.debug('RegdbName.parse_ie(): offset %d length %d self %s' %
+                      (offset, length, self))
+
+        return self
+
+    def add_to_buf(self, buf, offset):
+        return add_ie(buf, offset, ATH11K_BD_IE_REGDB_NAME, self.name.encode())
+
+    def __eq__(self, other):
+        return self.name == other.name
+
+    def __repr__(self):
+        return self.__str__()
+
+    def __str__(self):
+        return 'RegdbName(%s)' % self.name
+
+    def __init__(self, name=None):
+        self.name = name
+
+
+class RegdbData():
+    @staticmethod
+    def parse_ie(buf, offset, length):
+        self = RegdbData()
+        fmt = '<%ds' % length
+        (self.data, ) = struct.unpack_from(fmt, buf, offset)
+
+        logging.debug('RegdbData.parse_ie(): offset %d length %d self %s' %
+                      (offset, length, self))
+
+        return self
+
+    def add_to_buf(self, buf, offset):
+        return add_ie(buf, offset, ATH11K_BD_IE_REGDB_DATA, self.data)
+
+    def __repr__(self):
+        return self.__str__()
+
+    def __str__(self):
+        if self.data is not None:
+            s = '%d B' % (len(self.data))
+        else:
+            s = 'n/a'
+
+        return 'RegdbData(%s)' % (s)
+
+    def __init__(self, data=None):
+        self.data = data
+
+
+class Regdb():
+    @staticmethod
+    def parse_ie(buf, offset, length):
+        logging.debug('Regdb.parse_ie(): offset %d length %d' % (offset, length))
+
+        self = Regdb()
+
+        # looping regdb IEs
+        while length > 0:
+            (ie_id, ie_len) = struct.unpack_from('<2i', buf, offset)
+
+            logging.debug('Regdb.parse_ie(): found ie_id %d ie_len %d offset %d length %d' %
+                          (ie_id, ie_len, offset, length))
+
+            if TYPE_LENGTH_SIZE + ie_len > length:
+                raise Exception('Error: ie_len too big (%d > %d)' % (ie_len,
+                                                                     length))
+
+            offset += TYPE_LENGTH_SIZE
+            length -= TYPE_LENGTH_SIZE
+
+            if ie_id == ATH11K_BD_IE_REGDB_NAME:
+                self.names.append(RegdbName.parse_ie(buf, offset, ie_len))
+            elif ie_id == ATH11K_BD_IE_REGDB_DATA:
+                self.data = RegdbData.parse_ie(buf, offset, ie_len)
+
+            offset += ie_len + padding_needed(ie_len)
+            length -= ie_len + padding_needed(ie_len)
+
+        return self
+
+    def add_to_buf(self, buf, offset):
+        # store position ie header of this element
+        ie_offset = offset
+
+        offset += TYPE_LENGTH_SIZE
+
+        for name in self.names:
+            offset = name.add_to_buf(buf, offset)
+
+        offset = self.data.add_to_buf(buf, offset)
+
+        # write ie header as now we know the full length
+        ie_len = offset - ie_offset - TYPE_LENGTH_SIZE
+        struct.pack_into('<2i', buf, ie_offset, ATH11K_BD_IE_REGDB, ie_len)
+
+        return offset
+
+    def get_names_as_str(self):
+        names = []
+        for regdbname in self.names:
+            names.append(regdbname.name)
+
+        return names
+
+    def __repr__(self):
+        return self.__str__()
+
+    def __str__(self):
+        names = []
+        for regdbname in self.names:
+            names.append(str(regdbname))
+
+        return 'Regdb(%s, %s)' % (','.join(names), self.data)
+
+    def __init__(self):
+        self.data = None
+        self.names = []
+
+
 class BoardName():
     @staticmethod
     def parse_ie(buf, offset, length):
@@ -113,12 +232,8 @@ class BoardName():
 
         return self
 
-    def add_to_buf(self, ebdf, buf, offset):
-        ie_id = ATH10K_BD_IE_BOARD_NAME
-        if ebdf:
-            ie_id = ATH10K_BD_IE_BOARD_EXT_NAME
-
-        return add_ie(buf, offset, ie_id, self.name.encode('utf-8'))
+    def add_to_buf(self, buf, offset):
+        return add_ie(buf, offset, ATH11K_BD_IE_BOARD_NAME, self.name.encode())
 
     def __eq__(self, other):
         return self.name == other.name
@@ -145,12 +260,8 @@ class BoardData():
 
         return self
 
-    def add_to_buf(self, ebdf, buf, offset):
-        ie_id = ATH10K_BD_IE_BOARD_DATA
-        if ebdf:
-            ie_id = ATH10K_BD_IE_BOARD_EXT_DATA
-
-        return add_ie(buf, offset, ie_id, self.data)
+    def add_to_buf(self, buf, offset):
+        return add_ie(buf, offset, ATH11K_BD_IE_BOARD_DATA, self.data)
 
     def __repr__(self):
         return self.__str__()
@@ -188,12 +299,9 @@ class Board():
             offset += TYPE_LENGTH_SIZE
             length -= TYPE_LENGTH_SIZE
 
-            # FIXME: create separate ExtenderBoard() class so that we
-            # don't need these "or" hacks here. Maybe add a common
-            # abstract class to avoid code duplication?
-            if ie_id == ATH10K_BD_IE_BOARD_NAME or ie_id == ATH10K_BD_IE_BOARD_EXT_NAME:
+            if ie_id == ATH11K_BD_IE_BOARD_NAME:
                 self.names.append(BoardName.parse_ie(buf, offset, ie_len))
-            elif ie_id == ATH10K_BD_IE_BOARD_DATA or ie_id == ATH10K_BD_IE_BOARD_EXT_DATA:
+            elif ie_id == ATH11K_BD_IE_BOARD_DATA:
                 self.data = BoardData.parse_ie(buf, offset, ie_len)
 
             offset += ie_len + padding_needed(ie_len)
@@ -207,19 +315,14 @@ class Board():
 
         offset += TYPE_LENGTH_SIZE
 
-        ie_id = ATH10K_BD_IE_BOARD
-
-        if self.ebdf:
-            ie_id = ATH10K_BD_IE_BOARD_EXT
-
         for name in self.names:
-            offset = name.add_to_buf(self.ebdf, buf, offset)
+            offset = name.add_to_buf(buf, offset)
 
-        offset = self.data.add_to_buf(self.ebdf, buf, offset)
+        offset = self.data.add_to_buf(buf, offset)
 
         # write ie header as now we know the full length
         ie_len = offset - ie_offset - TYPE_LENGTH_SIZE
-        struct.pack_into('<2i', buf, ie_offset, ie_id, ie_len)
+        struct.pack_into('<2i', buf, ie_offset, ATH11K_BD_IE_BOARD, ie_len)
 
         return offset
 
@@ -243,36 +346,31 @@ class Board():
     def __init__(self):
         self.data = None
         self.names = []
-        self.ebdf = False
 
 
 class BoardContainer:
 
-    def find_board(self, name):
-        for board in self.boards:
-            for boardname in board.names:
-                if name == boardname.name:
-                    return board
-
     def add_board(self, data, names):
         boardnames = []
-        ebdf = False
-
         for name in names:
-            b = self.find_board(name)
-            if b:
-                self.boards.remove(b)
-
-            if "bmi-eboard-id" in name:
-                ebdf = True
             boardnames.append(BoardName(name))
 
         board = Board()
-        board.ebdf = ebdf
         board.data = BoardData(data)
         board.names = boardnames
 
         self.boards.append(board)
+
+    def add_regdb(self, data, names):
+        regdbnames = []
+        for name in names:
+            regdbnames.append(RegdbName(name))
+
+        regdb = Regdb()
+        regdb.data = RegdbData(data)
+        regdb.names = regdbnames
+
+        self.regdbs.append(regdb)
 
     @staticmethod
     def open_json(filename):
@@ -286,13 +384,23 @@ class BoardContainer:
         mapping = json.loads(f.read())
         f.close()
 
-        for b in mapping:
-            board_filename = b['data']
-            f = open(board_filename, 'rb')
-            data = f.read()
-            f.close()
+        if 'board' in mapping[0]:
+            for b in mapping[0]['board']:
+                board_filename = b['data']
+                f = open(board_filename, 'rb')
+                data = f.read()
+                f.close()
 
-            self.add_board(data, b['names'])
+                self.add_board(data, b['names'])
+
+        if 'regdb' in mapping[0]:
+            for b in mapping[0]['regdb']:
+                regdb_filename = b['data']
+                f = open(regdb_filename, 'rb')
+                data = f.read()
+                f.close()
+
+                self.add_regdb(data, b['names'])
 
         return self
 
@@ -311,7 +419,7 @@ class BoardContainer:
                 allnames.append(name)
 
     def _add_signature(self, buf, offset):
-        signature = ATH10K_BOARD_SIGNATURE + b'\0'
+        signature = ATH11K_BOARD_SIGNATURE + b'\0'
         length = len(signature)
         pad_len = padding_needed(length)
         length = length + pad_len
@@ -325,8 +433,8 @@ class BoardContainer:
         struct.pack_into(fmt, buf, offset, signature, padding.raw)
         offset += length
 
-        # make sure ATH10K_BOARD_SIGNATURE_LEN is correct
-        assert ATH10K_BOARD_SIGNATURE_LEN == length
+        # make sure ATH11K_BOARD_SIGNATURE_LEN is correct
+        assert ATH11K_BOARD_SIGNATURE_LEN == length
 
         return offset
 
@@ -343,14 +451,14 @@ class BoardContainer:
 
         offset = 0
 
-        fmt = '<%dsb' % (len(ATH10K_BOARD_SIGNATURE))
+        fmt = '<%dsb' % (len(ATH11K_BOARD_SIGNATURE))
         (signature, null) = struct.unpack_from(fmt, buf, offset)
 
-        if signature != ATH10K_BOARD_SIGNATURE or null != 0:
+        if signature != ATH11K_BOARD_SIGNATURE or null != 0:
             print("invalid signature found in %s" % name)
             return 1
 
-        offset += ATH10K_BOARD_SIGNATURE_LEN
+        offset += ATH11K_BOARD_SIGNATURE_LEN
 
         # looping main IEs
         while offset < buf_len:
@@ -366,10 +474,10 @@ class BoardContainer:
                                                                   buf_len))
                 return 1
 
-            # FIXME: create separate ExtenderBoard() class and
-            # self.extender_boards list
-            if ie_id == ATH10K_BD_IE_BOARD or ie_id == ATH10K_BD_IE_BOARD_EXT:
+            if ie_id == ATH11K_BD_IE_BOARD:
                 self.boards.append(Board.parse_ie(buf, offset, ie_len))
+            elif ie_id == ATH11K_BD_IE_REGDB:
+                self.regdbs.append(Regdb.parse_ie(buf, offset, ie_len))
 
             offset += ie_len + padding_needed(ie_len)
 
@@ -396,6 +504,9 @@ class BoardContainer:
 
         for board in self.boards:
             offset = board.add_to_buf(buf, offset)
+
+        for regdb in self.regdbs:
+            offset = regdb.add_to_buf(buf, offset)
 
         # returns buffer and it's length
         return buf, offset
@@ -427,16 +538,40 @@ class BoardContainer:
             s += 'BoardMD5%s: %s\n' % (index_s, hashlib.md5(board.data.data).hexdigest())
             index += 1
 
+        regdbs = self.regdbs
+
+        if sort:
+            regdbs = sorted(regdbs, key=lambda regdb: regdb.get_names_as_str())
+
+        index = 0
+        for regdb in regdbs:
+            if not sort:
+                index_s = '[%d]' % (index)
+            else:
+                index_s = ''
+
+            s += 'RegdbNames%s: \'%s\'\n' % (index_s, pretty_array_str(regdb.get_names_as_str()))
+            s += 'RegdbLength%s: %d\n' % (index_s, len(regdb.data.data))
+            s += 'RegdbCRC32%s: %08x\n' % (index_s, _crc32(regdb.data.data))
+            s += 'RegdbMD5%s: %s\n' % (index_s, hashlib.md5(regdb.data.data).hexdigest())
+            index += 1
+
         return s
 
     def __init__(self):
         self.boards = []
+        self.regdbs = []
 
 
 def cmd_extract(args):
     cont = BoardContainer().open(args.extract)
 
     mapping = []
+    d = {}
+    mapping.append(d)
+
+    mapping_board = []
+    d['board'] = mapping_board
 
     for board in cont.boards:
         filename = board.names[0].name + '.bin'
@@ -444,13 +579,30 @@ def cmd_extract(args):
         b = {}
         b['names'] = board.get_names_as_str()
         b['data'] = filename
-        mapping.append(b)
+        mapping_board.append(b)
 
         f = open(filename, 'wb')
         f.write(board.data.data)
         f.close()
 
         print("%s created size: %d" % (filename, len(board.data.data)))
+
+    mapping_regdb = []
+    d['regdb'] = mapping_regdb
+
+    for regdb in cont.regdbs:
+        filename = regdb.names[0].name + '.regdb'
+
+        b = {}
+        b['names'] = regdb.get_names_as_str()
+        b['data'] = filename
+        mapping_regdb.append(b)
+
+        f = open(filename, 'wb')
+        f.write(regdb.data.data)
+        f.close()
+
+        print("%s created size: %d" % (filename, len(regdb.data.data)))
 
     filename = DEFAULT_JSON_FILE
     f = open(filename, 'w')
@@ -513,7 +665,6 @@ def diff_boardfiles(filename1, filename2, diff):
         result += '%s\n' % (output.decode())
 
     # create simple statistics about changes in board images
-
     new_boards = {}
     deleted_boards = {}
     changed_boards = {}
@@ -542,14 +693,52 @@ def diff_boardfiles(filename1, filename2, diff):
         # board image has changed
         changed_boards[names] = board2
 
-    result += 'New:\n%s\n\n' % ('\n'.join(new_boards.keys()))
-    result += 'Changed:\n%s\n\n' % ('\n'.join(changed_boards.keys()))
-    result += 'Deleted:\n%s\n' % ('\n'.join(deleted_boards.keys()))
+    result += 'New board:\n%s\n\n' % ('\n'.join(list(new_boards.keys())))
+    result += 'Changed board:\n%s\n\n' % ('\n'.join(list(changed_boards.keys())))
+    result += 'Deleted board:\n%s\n' % ('\n'.join(list(deleted_boards.keys())))
 
-    result += '%d board image(s) added, %d changed, %d deleted, %d in total' % (len(new_boards),
-                                                                                len(changed_boards),
-                                                                                len(deleted_boards),
-                                                                                len(container2.boards))
+    result += '%d board image(s) added, %d changed, %d deleted, %d in total\n\n' % (len(new_boards),
+                                                                                    len(changed_boards),
+                                                                                    len(deleted_boards),
+                                                                                    len(container2.boards))
+
+    # create simple statistics about changes in regdb images
+    new_regdbs = {}
+    deleted_regdbs = {}
+    changed_regdbs = {}
+
+    for regdb in container2.regdbs:
+        # convert the list to a string
+        s = pretty_array_str(regdb.get_names_as_str())
+        new_regdbs[s] = regdb
+
+    for regdb in container1.regdbs:
+        # convert the list to a string
+        names = pretty_array_str(regdb.get_names_as_str())
+
+        if names not in new_regdbs:
+            # regdb image has been deleted
+            deleted_regdbs[names] = regdb
+            continue
+
+        regdb2 = new_regdbs[names]
+        del new_regdbs[names]
+
+        if regdb.data.data == regdb2.data.data:
+            # regdb image hasn't changed
+            continue
+
+        # regdb image has changed
+        changed_regdbs[names] = regdb2
+
+    result += 'New regdb:\n%s\n\n' % ('\n'.join(list(new_regdbs.keys())))
+    result += 'Changed regdb:\n%s\n\n' % ('\n'.join(list(changed_regdbs.keys())))
+    result += 'Deleted regdb:\n%s\n' % ('\n'.join(list(deleted_regdbs.keys())))
+
+    result += '%d regdb image(s) added, %d changed, %d deleted, %d in total' % (len(new_regdbs),
+                                                                                len(changed_regdbs),
+                                                                                len(deleted_regdbs),
+                                                                                len(container2.regdbs))
 
     os.close(temp1_fd)
     os.close(temp2_fd)
@@ -595,91 +784,37 @@ def cmd_add_board(args):
     os.remove(temp_pathname)
 
 
-def git_get_head_id():
-    return subprocess.check_output(['git', 'log', '--format=format:%H', '-1'], text=True)
-
-
-def cmd_add_mbox(args):
-    board_filename = args.add_mbox[0]
-    mbox_filename = args.add_mbox[1]
-
-    mbox = mailbox.mbox(mbox_filename)
-
-    for msg in mbox:
-        board_files = {}
-
-        for part in msg.walk():
-            filename = part.get_filename()
-
-            if not filename:
-                # not an attachment
-                continue
-
-            if not filename.endswith(BIN_SUFFIX):
-                continue
-
-            name = filename[:-len(BIN_SUFFIX)]
-            board_files[name] = part.get_payload(decode=True)
-
-        print('Found mail "%s" with %d board files' % (msg['Subject'],
-                                                       len(board_files)))
-
-        # copy the original file for diff
-        (temp_fd, temp_pathname) = tempfile.mkstemp()
-        shutil.copyfile(board_filename, temp_pathname)
-
-        container = BoardContainer.open(board_filename)
-        for name, data in board_files.items():
-            names = [name]
-            container.add_board(data, names)
-
-        container.write(board_filename)
-
-        applied_msg = ''
-
-        if args.commit:
-            cmd = ['git', 'commit', '--quiet', '-m', msg['Subject'], board_filename]
-            subprocess.check_call(cmd)
-
-            applied_msg += 'Thanks, added to %s:\n\n' % (board_filename)
-
-        applied_msg += diff_boardfiles(temp_pathname, board_filename, False)
-        applied_msg += '\n\n'
-
-        if args.commit:
-            applied_msg += '%s/%s\n\n' % (ATH10K_FIRMWARE_URL, git_get_head_id())
-
-        os.remove(temp_pathname)
-
-        print('----------------------------------------------')
-        print(applied_msg)
-        print('----------------------------------------------')
-
-        xclip(applied_msg)
-
-
 def main():
-    description = '''ath10k board-N.bin files manegement tool
+    description = '''ath11k board-N.bin files manegement tool
 
-ath10k-bdencoder is for creating (--create), listing (--info) and
-comparing (--diff, --diffstat) ath10k board-N.bin files. The
+ath11k-bdencoder is for creating (--create), listing (--info) and
+comparing (--diff, --diffstat) ath11k board-N.bin files. The
 board-N.bin is a container format which can have unlimited number of
 actual board images ("board files"), each image containing one or
-names which ath10k uses to find the correct image.
+names which ath11k uses to find the correct image.
 
 For creating board files you need a mapping file in JSON which
 contains the names and filenames for the actual binary:
 
 [
+{
+"board": [
         {"names": ["AAA1", "AAAA2"], "data": "A.bin"},
         {"names": ["B"], "data": "B.bin"},
         {"names": ["C"], "data": "C.bin"},
+        ],
+"regdb": [
+        {"names": ["A"], "data": "A.regdb"}
+        ]
+}
 ]
 
 In this example the board-N.bin will contain three board files which
 are read from files named A.bin (using names AAA1 and AAAA2 in the
-board-N.bin file), B.bin (using name B) and C.bin (using name C). You
-can use --extract switch to see examples from real board-N.bin files.
+board-N.bin file), B.bin (using name B) and C.bin (using name C). The file also contains one regdb (regulatory database) from file A.regdb.
+
+You can use --extract switch to see examples from real board-N.bin
+files.
 '''
 
     parser = argparse.ArgumentParser(description=description,
@@ -699,11 +834,6 @@ can use --extract switch to see examples from real board-N.bin files.
     cmd_group.add_argument('-a', '--add-board', metavar='NAME', nargs='+',
                            help='add a board file to an existing board-N.bin, first argument is the filename of board-N.bin to add to, second is the filename board file (board.bin) to add and then followed by one or more arguments are names used in board-N.bin')
 
-    cmd_group.add_argument('-A', '--add-mbox', metavar='FILENAME', nargs=2,
-                           help='FIXME')
-
-    parser.add_argument('-C', '--commit', action='store_true',
-                        help='commit changes to a git repository')
     parser.add_argument('-v', '--verbose', action='store_true',
                         help='enable verbose (debug) messages')
     parser.add_argument("-o", "--output", metavar="BOARD_FILE",
@@ -727,8 +857,6 @@ can use --extract switch to see examples from real board-N.bin files.
         return cmd_diff(args)
     elif args.add_board:
         return cmd_add_board(args)
-    elif args.add_mbox:
-        return cmd_add_mbox(args)
 
 if __name__ == "__main__":
     main()
